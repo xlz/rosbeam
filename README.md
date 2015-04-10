@@ -1,6 +1,8 @@
 # rosbeam
 A ROS driver for BeamPro
 
+WARNING: besides the disclaimer in LICENSE, note that this is research work and is based on experiments and reverse engineering. Take extra precautions during operation.
+
 ## Installation
 
 Dependency:
