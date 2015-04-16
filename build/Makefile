@@ -1,6 +1,6 @@
 .PHONY: clean cleanall install all
 
-CMAKE_FLAGS=-DBUILD_SHARED_LIBS:BOOL=OFF -DCMAKE_BUILD_TYPE=Release -DBoost_USE_STATIC_LIBS:BOOL=ON -DBoost_USE_STATIC_RUNTIME:BOOL=ON -DCMAKE_CXX_FLAGS="-flto -march=sandybridge" -DCMAKE_C_FLAGS="-flto -march=sandybridge" -DCMAKE_AR=/usr/bin/gcc-ar -DCMAKE_NM=/usr/bin/gcc-nm -DCMAKE_RANLIB=/usr/bin/gcc-ranlib
+CMAKE_FLAGS=-DBUILD_SHARED_LIBS:BOOL=OFF -DCMAKE_BUILD_TYPE=Release -DBoost_USE_STATIC_LIBS:BOOL=ON -DBoost_USE_STATIC_RUNTIME:BOOL=ON
 
 SOURCES=../rosbeam/src/* ../rosbeam/*
 
