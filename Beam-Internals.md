@@ -57,3 +57,47 @@ The path of the initramfs seems hardcoded in the kernel. Its content can be extr
 ```
 TODO
 ```
+### RPD-STORE
+
+```
+$ ls -l RPD-STORE/
+total 28
+drwxr-xr-x 9 root root  4096 Apr 14 15:20 config
+drwxr-xr-x 2 root root  4096 Apr 20 17:43 images
+drwx------ 2 root root 16384 Apr 22  2014 lost+found
+```
+
+In `config` directory, there are all kinds of configurations. The ones relevant to us is
+
+```
+$ cat RPD-STORE/config/release/target 
+kernel:
+  archive: /store/images/base-kernel-0b182d3da87e-955490efbca4.tar
+  file: bzImage-0b182d3da87e-4883417f9a50
+  main: main-0b182d3da87e-1425884538.474827051.sqsh
+  version: '#ST-0b182d3da87e SMP PREEMPT Mon Mar 9 00:02:53 PDT 2015'
+layers:
+- /store/images/system-5d77b1782a85-2105f4d9f823.tgz
+- /store/images/software-0a86e7acbc7f-be572326600d.tgz
+no_watchdog: false
+release_id: !!python/unicode 'software-0a86e7acbc7f-be572326600d'
+unstable: false
+```
+
+And a potential `RPD-STORE/config/wifi_dev_mode` which activates development mode if created.
+
+The release target file specifies which images to extract to create the application chroot filesystem. `/media/RPD-STORE` is mounted as `/store` on Beam.
+
+The `base-kernel` image file is extracted to the boot partition
+```
+$ tar tf base-kernel-0b182d3da87e-955490efbca4.tar 
+./
+./main-0b182d3da87e-1425884538.474827051.sqsh
+./boot/
+./boot/grub/
+./boot/grub/grub.cfg
+./boot/grub/theme/
+./boot/grub/theme/beam.png
+./bzImage-0b182d3da87e-4883417f9a50
+```
+
