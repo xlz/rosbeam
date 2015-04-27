@@ -1,6 +1,6 @@
 # Beam Internals
 
-## Filesystem structures
+## Filesystem Structures
 
 The SD card in Beam stores everything that Beams run on. Its partition layout is this:
 
@@ -50,7 +50,8 @@ The path of the initial filesystem seems hardcoded in the kernel. Its content ca
 $ unsquashfs -d /tmp/main main-0b182d3da87e-1425884538.474827051.sqsh
 ...
 $ ls /tmp/main
-bin  boot  dev  etc  home  lib  lib64  media  mnt  opt  proc  root  run  sbin  selinux  srv  store  sys  tmp  usr  var
+bin  boot  dev  etc  home  lib  lib64  media  mnt  opt  proc  root  run
+sbin  selinux  srv  store  sys  tmp  usr  var
 $ cat /tmp/main/etc/issue.net 
 Ubuntu 12.04 LTS
 ```
@@ -117,7 +118,7 @@ menuentry 'RPD Default Image' --class os {
 
 The kernel will somehow load the "main" squashfs as the root filesystem.
 
-### Base Ubuntu system
+### Base Ubuntu System
 
 The kernel will load a standard Ubuntu 12.04 precise userspace, and execute `/sbin/init` which is Upstart. Upstart will follow standard Ubuntu booting procedures, until the custom `st.conf` where the booting process enters Suitable's modification:
 ```
@@ -171,7 +172,7 @@ Beam was originally called Texai. This texspawner script spawns `/home/st/sw-dev
 
 `texclient` is the main application program controlling Beam's driving and communication.
 
-## Gaining root access to Beam
+## Gaining Root Access to Beam
 
 Inside the chroot, SSH server will be started on `wan0` interface port 22 by `scripts/rpd_setup.py` if wifi_dev_mode is set up. But under the default settings, password login is not allowed:
 
@@ -192,7 +193,9 @@ We can always gain SSH access in this way because the application filesystem ima
 
 After getting SSH access, `sudo -i` to become root because user "st" is a sudoer.
 
-## Exploring driving protocol
+## Analyzing the Driving Protocol
+
+After gaining SSH access, we can do things directly on Beam. To help development, use `sudo apt-get update && sudo apt-get install vim strace` to set up a nice environment.
 
 Visual inspection shows Beam's main computer connects to the motor board at the bottom through a USB serial port. This corresponds to the device `/dev/ttyACM0`.
 
@@ -205,9 +208,81 @@ texclient 1653   st   33uW  CHR  166,0      0t0 29512 /dev/ttyACM0
 
 Use strace to monitor what is happening over this device:
 ```
-Brown University @0 stable_2.10.4 st@beam101095228:~$ sudo strace -etrace=read,write -f -p1653 2>&1 | grep --line-buffered '(33,'
+Brown University @0 stable_2.10.4 st@beam101095228:~$ sudo strace -etrace=read,write -x -f -p1659 2>&1 | grep --line-buffered '(32, '
+[pid  1733] read(32, 0x7f9c6c373000, 4096) = -1 EAGAIN (Resource temporarily unavailable)
+[pid  1733] write(32, "\xaa\xaa\x55\x55\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"..., 48) = 48
+[pid  1733] read(32, 0x7f9c6c373000, 4096) = -1 EAGAIN (Resource temporarily unavailable)
+[pid  1733] read(32, "\x33\x33\xcc\xcc\x03\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x08\x04\x00\x00\xe0\xff\xff\xff\x2a\x00\x00\x00\x11\xe2\x0c\x00"..., 4096) = 128
+[pid  1733] read(32, 0x7f9c6c373000, 4096) = -1 EAGAIN (Resource temporarily unavailable)
+[pid  1733] write(32, "\xaa\xaa\x55\x55\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"..., 48) = 48
+[pid  1733] read(32, 0x7f9c6c373000, 4096) = -1 EAGAIN (Resource temporarily unavailable)
 ...
-[pid  1751] write(33, "\252\252UU\1\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"..., 48) = 48
-...
-[pid  1751] read(33, "33\314\314\3\0\1\0\0\0\0\0\0\0\0\0q\1\0\0w\2\0\0,\0\0\0\253\267\f\0"..., 4096) = 128
 ```
+
+It can be observed that texclient is sending packets of fixed size of 48 bytes, and receiving packets of fixed size of 128 bytes. There must be a format for the packets.
+
+Further testing using strace reveals texclient opens `/dev/st001` which is a symlink to `/dev/ttyACM0`, and texclient is linked to `/home/st/sw-dev/install/bin/libst001_lib.so`. Poking around in `/home/st/sw-dev/install/bin/` with `objdump` and `nm` can reveal more about the meaning of the packet format.
+
+```
+Brown University @0 stable_2.10.4 st@beam101095228:~/sw-dev/install/bin$ nm -CD libst001_lib.so | grep Velocity
+0000000000006cb0 T bacon::st001::Communicator::sendVelocityCommand(bacon::st001::DriveCommand const&, bacon::st001::Status*, bacon::st001::_statStruct*, bacon::st001::Timeout const&)
+0000000000006f20 T bacon::st001::Communicator::sendVelocityCommandAndGetControllerStatus(bacon::st001::DriveCommand const&, bacon::st001::Status*, bacon::st001::_statStruct*, bacon::st001::_controllerStatStruct*, bacon::st001::Timeout const&)
+```
+
+Combined with experimentation and disassembly of the libraries, currently the following format has been derived:
+
+### Drive Command
+
+Offset | Size | Type | Meaning
+--- | --- | --- | ---
+0 | 4 | unsigned int | magic header 0x5555aaaa
+4 | 4 | unsigned int | "mode" usually 1, occasionally 0
+8 | 4 | fixed point | desired linear velocity
+12 | 4 | fixed point | desired angular velocity
+16 | 4 | unsigned int | "type" usually 0
+20 | 8 | unsigned int | limiter time-tag protecting against old commands 
+28 | 4 | fixed point | linear velocity limit
+32 | 4 | fixed point | angular velocity limit
+36 | 4 | fixed point | desired linear acceleration
+40 | 4 | fixed point | desired angular acceleration
+44 | 4 | unsigned int | CRC checksum
+
+* Here the 32-bit signed fixed point numbers are scaled by 65536.
+
+### Drive Status
+
+Offset | Size | Type | Meaning
+--- | --- | --- | ---
+0 | 4 | unsigned int | magic header 0xcccc3333
+4 | 4 | unsigned int | flags
+8 | 4 | signed int | left encoder speed
+12 | 4 | signed int | right encoder speed
+16 | 4 | fixed point | left wheel current (scaled by 1258.2912)
+20 | 4 | fixed point | right wheel current (scaled by 1258.2912)
+24 | 4 | signed int | temperature
+28 | 4 | fixed point | battery voltage
+32 | 4 | fixed point | battery current
+36 | 4 | fixed point | charging voltage
+40 | 4 | fixed point | charging current
+44 | 4 | signed int | (accelerometer?) acceleration 1
+48 | 4 | signed int | (accelerometer?) acceleration 2
+52 | 4 | signed int | (accelerometer?) acceleration 3
+56 | 4 | signed int | (accelerometer?) rotation 1
+60 | 4 | signed int | (accelerometer?) rotation 2
+64 | 4 | fixed point | battery capacity
+68 | 4 | unsigned int | timestamp (microsecond)
+72 | 4 | signed int | left encoder position
+76 | 4 | signed int | right encoder position
+80 | 4 | fixed point | battery maximum capacity
+84 | 8 | unsigned int | velocity limiter time-tag
+92 | 4 | fixed point | actual linear velocity
+96 | 4 | fixed point | actual angular velocity
+100 | 4 | fixed point | limited linear velocity
+104 | 4 | fixed point | limited angular velocity
+108 | 4 | fixed point | linear velocity limit
+112 | 4 | fixed point | angular velocity limit
+114 | 2 | signed int | driving command latency (millisecond)
+116 | 2 | signed int | limiter latency (millisecond)
+120 | 4 | signed int | integrated yaw
+124 | 4 | unsigned int | CRC checksum
+
