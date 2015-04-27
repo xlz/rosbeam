@@ -191,3 +191,23 @@ Because there are frequent updates to Beam's images, it is imperative to minimiz
 We can always gain SSH access in this way because the application filesystem images resides on the SD card and we have physical access to it.
 
 After getting SSH access, `sudo -i` to become root because user "st" is a sudoer.
+
+## Exploring driving protocol
+
+Visual inspection shows Beam's main computer connects to the motor board at the bottom through a USB serial port. This corresponds to the device `/dev/ttyACM0`.
+
+This shows texclient (pid 1653) is communicating with the motor board using this device as file descriptor 33.
+```
+Brown University @0 stable_2.10.4 st@beam101095228:~$ sudo lsof /dev/ttyACM0
+COMMAND    PID USER   FD   TYPE DEVICE SIZE/OFF  NODE NAME
+texclient 1653   st   33uW  CHR  166,0      0t0 29512 /dev/ttyACM0
+```
+
+Use strace to monitor what is happening over this device:
+```
+Brown University @0 stable_2.10.4 st@beam101095228:~$ sudo strace -etrace=read,write -f -p1653 2>&1 | grep --line-buffered '(33,'
+...
+[pid  1751] write(33, "\252\252UU\1\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"..., 48) = 48
+...
+[pid  1751] read(33, "33\314\314\3\0\1\0\0\0\0\0\0\0\0\0q\1\0\0w\2\0\0,\0\0\0\253\267\f\0"..., 4096) = 128
+```
