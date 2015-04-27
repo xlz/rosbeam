@@ -170,3 +170,24 @@ The `run` script will perform various setup procedures. Interesting parts includ
 Beam was originally called Texai. This texspawner script spawns `/home/st/sw-dev/install/bin/texclient` and restarts it when crashing unexpectedly, or performs cleanup if errors are considered too severe.
 
 `texclient` is the main application program controlling Beam's driving and communication.
+
+## Gaining root access to Beam
+
+Inside the chroot, SSH server will be started on `wan0` interface port 22 by `scripts/rpd_setup.py` if wifi_dev_mode is set up. But under the default settings, password login is not allowed:
+
+```
+$ grep ^Password software-0a86e7acbc7f-be572326600d/etc/ssh/sshd_config 
+PasswordAuthentication no
+```
+And the password itself is not known.
+In `scripts/rpd_setup.py`, `ssh_setup_user` uses `usermod` to reset the password for user "st" to a certain hash (not shown here) with the cleartext not known. If we can remove that setting, and change the password, we can then gain SSH access to Beam by just `ssh st@192.168.68.1`.
+
+To enable password login and replace the password to known hash, or to perform any needed changes, there are two methods:
+* Directly replace the content of the compressed images to our version
+* Create an additional layer in the release target to overwrite certain scripts along the startup process to change the content to our version
+
+Because there are frequent updates to Beam's images, it is imperative to minimize breakage across updates. Direct changes to the images will be replaced by new updated images. Overwriting a large updated script with an old fixed version is likely to introduce subtle errors. Thus one viable method is to choose a small script that is unlikely to change and inject our code in it. One current example is build/examples/platform.sh.
+
+We can always gain SSH access in this way because the application filesystem images resides on the SD card and we have physical access to it.
+
+After getting SSH access, `sudo -i` to become root because user "st" is a sudoer.
