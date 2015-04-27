@@ -65,7 +65,7 @@ drwxr-xr-x 2 root root  4096 Apr 20 17:43 images
 drwx------ 2 root root 16384 Apr 22  2014 lost+found
 ```
 
-In `config` directory, there are all kinds of configurations. The ones relevant to us is
+In `config` directory, there are all kinds of configurations. The ones relevant to us are
 
 ```
 $ cat RPD-STORE/config/release/target 
@@ -86,7 +86,7 @@ And a potential `RPD-STORE/config/wifi_dev_mode` which activates development mod
 
 The release target file specifies which images to extract to create the application chroot filesystem. `/media/RPD-STORE` is mounted as `/store` on Beam.
 
-The `base-kernel-` image file is extracted to the boot partition during updates.
+The `base-kernel-` image file is extracted to the RPD-BOOT partition during updates.
 ```
 $ tar tf base-kernel-0b182d3da87e-955490efbca4.tar 
 ./
@@ -146,11 +146,10 @@ LABEL=RPD-STORE /store              ext4  defaults            0 0
 LABEL=RPD-LOG   /var/log_permanent  ext4  defaults            0 0
 ```
 
-* First, load the YAML configuration at `/store/config/release/target`, check some versions
-* Extract all layers in order specified in the release target file to the chroot filesystem `/mnt/running`. For `.tgz` files, use `tar -xzf` to extract; for directories, just `cp -a`; for other types of files report errors.
-* Run a mount script at `/mnt/running/mount` to set up necessary mount points for the chroot filesystem.
-* Execute a script at `/mnt/running/init` to enter the chroot filesystem.
-* `/mnt/running/init` sets up some SSH access on the outside, and drop into the chroot at `/mnt/running` to execute $RPD_ROOT/run inside.
+* First, parse the YAML configuration at `/store/config/release/target`, verify kernel versions.
+* Extract all layers in the order specified in the release target file to the chroot filesystem `/mnt/running`. For `.tgz` files, use `tar -xzf` to extract; for directories, just `cp -a`; for other types of files report errors.
+* Run `/mnt/running/mount` to set up necessary mount points for the chroot filesystem.
+* Run `/mnt/running/init` to enter the chroot filesystem: `chroot /mnt/running $RPD_ROOT/run`.
 
 ### `$RPD_ROOT/run`
 
@@ -158,7 +157,7 @@ Inside the chroot, the original `/mnt/running` becomes the new root filesystem, 
 
 RPD_ROOT is an environment variable read from `/mnt/running/home/st/sw-dev/install/env/paths.sh` during `/mnt/running/init`. Its value is `/home/st/sw-dev/install`. Here are the most of Suitable's application files.
 
-The `run` script will performance various setup procedures. Interesting parts include:
+The `run` script will perform various setup procedures. Interesting parts include:
 * Set up the network interface `wan0` on the Ethernet port, if the file `/store/config/wifi_dev_mode` exists. The IP address of Beam is set up 192.168.68.1, and the gateway address is set to 192.168.68.2.
 * Set up the iptables firewall. Reject almost everything on `wlan0` and `wlan1`.
 * Start X server `su st -l -c "xinit /etc/xinitrc -- /usr/bin/Xorg vt8 -novtswitch $nocursor"&`
