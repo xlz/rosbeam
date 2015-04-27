@@ -248,6 +248,7 @@ Offset | Size | Type | Meaning
 44 | 4 | unsigned int | CRC checksum
 
 * Here the 32-bit signed fixed point numbers are scaled by 65536.
+* texclient will send drive commands in 10Hz when idle, 100Hz when busy.
 
 ### Drive Status
 
@@ -286,3 +287,9 @@ Offset | Size | Type | Meaning
 120 | 4 | signed int | integrated yaw
 124 | 4 | unsigned int | CRC checksum
 
+It seems there is something called "limiter" here that limits the velocity and verifies drive commands. If the limiter tag of a drive command is not up to date, it will refuse to drive.
+
+Odometry can be derived from encoder readings:
+
+* Linear odometry = (left encoder position - right encoder position) * 0.0040578907
+* Angular odometry = (left encoder position + right encoder position) * -0.019415744
