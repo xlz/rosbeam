@@ -293,3 +293,5 @@ Odometry can be derived from encoder readings:
 
 * Linear odometry = (left encoder position - right encoder position) * 0.0040578907
 * Angular odometry = (left encoder position + right encoder position) * -0.019415744
+
+Definitions of the above formats are also in `rosbeam/src/drive_command.h`.
