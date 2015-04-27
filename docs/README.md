@@ -250,6 +250,14 @@ Offset | Size | Type | Meaning
 * Here the 32-bit signed fixed point numbers are scaled by 65536.
 * texclient will send drive commands in 10Hz when idle, 100Hz when busy.
 
+Readings from a typical driving session using the official Beam client:
+
+![](drive-command.png)
+
+Latency between drive command and status:
+
+![](drive-command-vs-status.png)
+
 ### Drive Status
 
 Offset | Size | Type | Meaning
@@ -289,9 +297,21 @@ Offset | Size | Type | Meaning
 
 It seems there is something called "limiter" here that limits the velocity and verifies drive commands. If the limiter tag of a drive command is not up to date, it will refuse to drive.
 
+Data related to the velocity limiter:
+![](velocity-limiter.png)
+
+There is some redundancy in the status packet. Actual velocity can be derived using encoder speed, but there are other fields directly providing actual velocity. The difference between these two is shown below:
+![](encoder-readings.png)
+
+Comparing the drive command setpoint and control response, we can observe a fairly aggressive control law:
+![](control-response.png)
+
 Odometry can be derived from encoder readings:
 
 * Linear odometry = (left encoder position - right encoder position) * 0.0040578907
 * Angular odometry = (left encoder position + right encoder position) * -0.019415744
 
-Definitions of the above formats are also in `rosbeam/src/drive_command.h`.
+![](odometry.png)
+
+Definitions of the above formats can be also found in `rosbeam/src/drive_command.h`.
+
