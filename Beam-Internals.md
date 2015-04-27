@@ -27,11 +27,11 @@ mmcblk0     179:0    0   3.7G  0 disk
 └─mmcblk0p3 179:3    0 941.3M  0 part /media/obot/RPD-LOG
 ```
 
-where `RPD-BOOT` partition stores the bootstrap files, `RPD-STORE` stores application files, and `RPD-LOG` logs.
+where `RPD-BOOT` partition stores the bootstrap files, `RPD-STORE` stores application files, and `RPD-LOG` stores logs.
 
 ### RPD-BOOT
 
-The boot partition contains the bootloader grub, the kernel `bzImage`, and the initramfs `main-0b182d3da87e-1425884538.474827051.sqsh`.
+The boot partition contains the bootloader grub, the kernel `bzImage`, and the initial squashfs filesystem `main-0b182d3da87e-1425884538.474827051.sqsh`.
 
 ```
 $ ls -l RPD-BOOT/
@@ -45,18 +45,16 @@ drwx------ 2 root root    16384 Apr 22  2014 lost+found
 -rw-r--r-- 1 root root 83767296 Mar  9 03:05 main-0b182d3da87e-1425884538.474827051.sqsh
 ```
 
-GRUB is configured to boot up the kernel with plain parameters:
+The path of the initial filesystem seems hardcoded in the kernel. Its content can be extracted with squashfs-tools:
 ```
-menuentry 'RPD Default Image' --class os {
-  strecordfail
-  linux /bzImage loglevel=3 splash
-}
+$ unsquashfs -d /tmp/main main-0b182d3da87e-1425884538.474827051.sqsh
+...
+$ ls /tmp/main
+bin  boot  dev  etc  home  lib  lib64  media  mnt  opt  proc  root  run  sbin  selinux  srv  store  sys  tmp  usr  var
+$ cat /tmp/main/etc/issue.net 
+Ubuntu 12.04 LTS
 ```
 
-The path of the initramfs seems hardcoded in the kernel. Its content can be extracted with squashfs-tools:
-```
-TODO
-```
 ### RPD-STORE
 
 ```
@@ -88,7 +86,7 @@ And a potential `RPD-STORE/config/wifi_dev_mode` which activates development mod
 
 The release target file specifies which images to extract to create the application chroot filesystem. `/media/RPD-STORE` is mounted as `/store` on Beam.
 
-The `base-kernel` image file is extracted to the boot partition
+The `base-kernel-` image file is extracted to the boot partition during updates.
 ```
 $ tar tf base-kernel-0b182d3da87e-955490efbca4.tar 
 ./
@@ -101,3 +99,75 @@ $ tar tf base-kernel-0b182d3da87e-955490efbca4.tar
 ./bzImage-0b182d3da87e-4883417f9a50
 ```
 
+The `system-` and `software-` "layers" are extracted into a directory to create the application chroot filesystem.
+
+## Booting process
+
+### Bootloader
+
+After POST, BIOS loads GRUB from MBR. Although it seems the platform is capable of UEFI booting. When the SD card is not plugged in before booting, it will drop into a TianoCore EFI shell.
+
+GRUB is configured in RPD-BOOT/boot/grub/grub.cfg to boot up the kernel with plain parameters:
+```
+menuentry 'RPD Default Image' --class os {
+  strecordfail
+  linux /bzImage loglevel=3 splash
+}
+```
+
+The kernel will somehow load the "main" squashfs as the root filesystem.
+
+### Base Ubuntu system
+
+The kernel will load a standard Ubuntu 12.04 precise userspace, and execute `/sbin/init` which is Upstart. Upstart will follow standard Ubuntu booting procedures, until the custom `st.conf` where the booting process enters Suitable's modification:
+```
+$ cat /tmp/main/etc/init/st.conf 
+# chroot - run the chroot environment according to our symlink
+#
+
+description	"run the chroot environment"
+
+exec tofile /var/log_permanent/st/init-base.log init-base
+
+post-stop exec tofile /var/log_permanent/st/init-base.log cleanup-base
+```
+Here `tofile` is a trivial script at `/usr/sbin/tofile` which basically redirects the output of the command to a file. `init-base` (`/usr/sbin/init-base`) is the entry point to the application filesystem.
+
+### `init-base`
+
+This script sets up the application chroot filesystem created by Suitable.
+
+Several filesystems have been mounted according to fstab:
+```
+$ cat /tmp/main/etc/fstab
+...
+LABEL=RPD-BOOT /boot ext4 defaults 0 0
+LABEL=RPD-STORE /store              ext4  defaults            0 0
+LABEL=RPD-LOG   /var/log_permanent  ext4  defaults            0 0
+```
+
+* First, load the YAML configuration at `/store/config/release/target`, check some versions
+* Extract all layers in order specified in the release target file to the chroot filesystem `/mnt/running`. For `.tgz` files, use `tar -xzf` to extract; for directories, just `cp -a`; for other types of files report errors.
+* Run a mount script at `/mnt/running/mount` to set up necessary mount points for the chroot filesystem.
+* Execute a script at `/mnt/running/init` to enter the chroot filesystem.
+* `/mnt/running/init` sets up some SSH access on the outside, and drop into the chroot at `/mnt/running` to execute $RPD_ROOT/run inside.
+
+### `$RPD_ROOT/run`
+
+Inside the chroot, the original `/mnt/running` becomes the new root filesystem, and anything outside the original `/mnt/running` is supposed to be unaccessible unless mounted otherwise. The log during this phase is to be found at `/var/log_permanent/st/init-st.log` in the `RPD-LOG` partition.
+
+RPD_ROOT is an environment variable read from `/mnt/running/home/st/sw-dev/install/env/paths.sh` during `/mnt/running/init`. Its value is `/home/st/sw-dev/install`. Here are the most of Suitable's application files.
+
+The `run` script will performance various setup procedures. Interesting parts include:
+* Set up the network interface `wan0` on the Ethernet port, if the file `/store/config/wifi_dev_mode` exists. The IP address of Beam is set up 192.168.68.1, and the gateway address is set to 192.168.68.2.
+* Set up the iptables firewall. Reject almost everything on `wlan0` and `wlan1`.
+* Start X server `su st -l -c "xinit /etc/xinitrc -- /usr/bin/Xorg vt8 -novtswitch $nocursor"&`
+* Configure LD_LIBRARY_PATH (probably make it `LD_LIBRARY_PATH=/home/st/sw-dev/install/bin`)
+* Set binary permissions: add some capabilities to several binaries, and set uid to "st" for almost all binaries in `/home/st/sw-dev/install/bin`
+* Execute `$RPD_ROOT/st-run`, which starts `$RPD_ROOT/scripts/texspawner`
+
+### `texspawner`
+
+Beam was originally called Texai. This texspawner script spawns `/home/st/sw-dev/install/bin/texclient` and restarts it when crashing unexpectedly, or performs cleanup if errors are considered too severe.
+
+`texclient` is the main application program controlling Beam's driving and communication.
