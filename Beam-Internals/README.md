@@ -315,3 +315,6 @@ Odometry can be derived from encoder readings:
 
 Definitions of the above formats can be also found in `rosbeam/src/drive_command.h`.
 
+## Building Interface for Motor Control
+
+![](workflow.png)
