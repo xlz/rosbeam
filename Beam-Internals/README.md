@@ -348,3 +348,26 @@ Use previously described method to modify the starting parameters ot texclient s
 ### Implementing a Safety Mechanism
 
 Controller crashes can errors in the above analysis of control protocol can lead to dangerous robot behaviors. It is important to have an extra safety mechanism, also called e-stop, watchdog, or kill switch.
+
+Using certain Linux kernel features involved with timers can avoid an extra userspace moving part. One idea is to send heartbeat pings containing a particular pattern to Beam, then let the Netfilter framework filter such pings, and maintain a watchdog timer. Once the watchdog times out, stop any movement by sending a series of zero velocity commands to the motor board.
+
+The Netfilter framework has various features involved with timers but only a few is enabled in Beam's kernel. The `LED` target module was once enabled, but later removed from Beam's kernel. But `hashlimit` module still remains and can work for us.
+
+Using `ping -f -p 5741544348444f47 $beam_ip` can send a flood of pings containg the string pattern "WATCHDOG". Here is a hex dump of such ICMP ECHO packets:
+```
+0000   5c ad 0a 00 00 00 00 00 57 41 54 43 48 44 4f 47  \.......WATCHDOG
+0010   57 41 54 43 48 44 4f 47 57 41 54 43 48 44 4f 47  WATCHDOGWATCHDOG
+0020   57 41 54 43 48 44 4f 47 57 41 54 43 48 44 4f 47  WATCHDOGWATCHDOG
+```
+
+And `iptables` can filter such ICMP packets with:
+```
+iptables -t mangle -I INPUT -p icmp -m icmp --icmp-type ping -m string --algo bm --from 28 --to 128 --string "WATCHDOG" \
+```
+
+After selecting "WATCHDOG" heartbeat packets, update a timer using the hashlimit module:
+```
+-m hashlimit --hashlimit-mode dstport --hashlimit-upto 1/second --hashlimit-htable-expire 200 --hashlimit-htable-gcinterval 100 --hashlimit-name watchdog -j ACCEPT
+```
+
+This iptables rule will create a file at `/proc/net/ipt_hashlimit/watchdog` representing a hash table (with a single entry expiring every 100 millisecond), and the file will contain a string of the hash table if the entry is not expired, or empty if expired. By querying this file we can determine whether the heartbeat is up to date and the watchdog is active. In this way creating a firewall filtering rule in the kernel, and using this file in procfs avoids an extra userspace moving part and minimizes IPC overhead.
