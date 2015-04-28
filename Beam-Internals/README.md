@@ -187,7 +187,7 @@ To enable password login and replace the password to known hash, or to perform a
 * Directly replace the content of the compressed images to our version
 * Create an additional layer in the release target to overwrite certain scripts along the startup process to change the content to our version
 
-Because there are frequent updates to Beam's images, it is imperative to minimize breakage across updates. Direct changes to the images will be replaced by new updated images. Overwriting a large updated script with an old fixed version is likely to introduce subtle errors. Thus one viable method is to choose a small script that is unlikely to change and inject our code in it. One current example is build/examples/platform.sh.
+Because there are frequent updates to Beam's images, it is imperative to maintain forward compatibility and minimize breakage across updates. Direct changes to the images will be replaced by new updated images. Overwriting a large updated script with an old fixed version is likely to introduce subtle errors. Thus one viable method is to choose a small script that is unlikely to change and inject our code in it. One current example is build/examples/platform.sh.
 
 We can always gain SSH access in this way because the application filesystem images resides on the SD card and we have physical access to it.
 
@@ -315,6 +315,36 @@ Odometry can be derived from encoder readings:
 
 Definitions of the above formats can be also found in `rosbeam/src/drive_command.h`.
 
-## Building Interface for Motor Control
+## Building Interfaces for Motor Control
+
+There are several approaches to expose the control interfaces of Beam.
+* Intercept network transmission between texclient and remote Beam user to inject desired modification and export encoder measurements.
+* Intercept read-write system calls between texclient and the serial port device connected to the motor board.
+* Intercept dynamic library calls between texclient and libraries such as libst001_lib.so and libc.so.
+
+Capturing and figuring out the format of the network transmission was too difficult. My guess is that it is probably using Protobuf as encapsulation. There might also be TLS encryption for network transmission which increases the difficulty.
+
+Using ptrace provided by Linux kernel to intercept system calls is a viable method to implement the second approach. An example is given in `testing/sendcmd-ptrace.c` to show how to modify the parameters in idle drive commands sent in 10Hz. However, this method introduces additional overhead for each system call, and ptrace itself can fail. These two problems are unacceptable for the controller component that is critical to safety.
+
+Thus the third approach uses LD_PRELOAD to replace functions used in texclient with our versions and run our code inside the memory space of texclient. We replace the `open()` and `write()` functions in libc.so with our versions to obtain the file descriptor of `/dev/st001` created by `open()`, and modify parameters of drive commands sent by the function `write()`. We also replace the `bacon::st001::Communicator::readPacket()` function in libst001_lib.so to export received drive states. We do not directly intercept `read()` because it seems `read()` at libc.so level is buffered and segmented even though the syscalls are of 128 bytes making it difficult to identify which `read()` calls are for drive states. `bacon::st001::Communicator::readPacket()` is a good alternative position to intercept it.
+
+The following illustrates the workflow described above:
 
 ![](workflow.png)
+
+After creating a shared library `libtexclient-inject.so`, there are still some issues in attaching it to texclient.
+
+```
+Brown University @0 stable_2.10.4 st@beam101095228:~/sw-dev/install/bin$ ls -l texclient 
+-rwsr-sr-x 1 st st 43216 Apr 20 13:41 texclient
+Brown University @0 stable_2.10.4 st@beam101095228:~/sw-dev/install/bin$ getcap texclient 
+texclient = cap_sys_nice+eip
+```
+
+LD_PRELOAD is disabled for setuid binaries and binaries with capabilities. Here texclient has both setuid and a capability. However since we have physical control of the filesystem layout, one way to fix this is to make it a root setuid binary and put it in a standard search directory (`/usr/lib/x86_64-linux-gnu` in this case).
+
+Use previously described method to modify the starting parameters ot texclient such as `LD_PRELOAD=libtexclient-inject.so /home/st/sw-dev/install/bin/texclient`. Then after texclient starts, the library will expose interfaces over IPC with the ROS bridge application.
+
+### Implementing a Safety Mechanism
+
+Controller crashes can errors in the above analysis of control protocol can lead to dangerous robot behaviors. It is important to have an extra safety mechanism, also called e-stop, watchdog, or kill switch.
