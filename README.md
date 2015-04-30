@@ -1,7 +1,13 @@
 # rosbeam
 A ROS driver for BeamPro
 
-WARNING: besides the disclaimer in LICENSE, note that this is research work and is based on experiments and reverse engineering. Take extra precautions during operation.
+## NOTICE
+
+This repository was established purely for the purpose of knowledge dissemination and access to open source.  This repository will not be actively maintained.  We provide no promise of responding to issues and pull requests submitted to this repository.
+
+## WARNING
+
+In addition to the disclaimers above and in LICENSE, note that this work is experimental development on open source systems for the purposes of academic research. Please take extra precautions during operation.
 
 ## Installation
 
