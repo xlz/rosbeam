@@ -3,7 +3,7 @@
   <name>rosbeam</name>
   <version>0.1.0</version>
   <description>ROS driver for Beam</description>
-  <maintainer email="lingzhu@lingzhuxiang.com">Lingzhu Xiang</maintainer>
+  <maintainer email="odest_jenkins@brown.edu">Chad Jenkins</maintainer>
   <license>MIT</license>
 
   <url type="bugtracker">https://github.com/xlz/rosbeam/issues</url>
