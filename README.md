@@ -51,6 +51,25 @@ Controlling Beam over WIFI is not recommended but possible.
 * First find out the IP address of Beam `$BEAM_WIFI_IP` over WIFI: `ssh st@192.168.68.1 ip addr`
 * Restart the bridge: `ssh st@$BEAM_WIFI_IP 'pkill rosbeam-bridge && rosbeam-bridge.sh'`
 
+If there is no Ethernet access (BeamPlus) in the first place, apply this change to `platform.sh`
+```diff
+diff --git a/build/examples/platform.sh b/build/examples/platform.sh
+index d12c972..e0a86ff 100644
+--- a/build/examples/platform.sh
++++ b/build/examples/platform.sh
+@@ -27,5 +27,8 @@ if [ -e /store/config/wifi_dev_mode ]; then
+     sed -i "s#'usermod'[^]]*#'usermod', '-p' '\$6\$PasswordIsst\$DIRmCphmakWh8VunZU/roAkHBpBs3ArsofO85taMcp77Fp7b3fZ3wy9W5yTvT/CXA96Jbsw9okC4WStHwqC.T0', 'st'#" /home/st/sw-dev/install/scripts/rpd_setup.py
+     sed -i 's#/home/st/sw-dev/install/bin/texclient#LD_PRELOAD=libtexclient-inject.so /home/st/sw-dev/install/bin/texclient#' /home/st/sw-dev/install/scripts/texspawner
+     sleep 20 && iptables -t mangle -I INPUT -p icmp -m icmp --icmp-type ping -m string --algo bm --from 28 --to 128 --string "WATCHDOG" -m hashlimit --hashlimit-mode dstport --hashlimit-upto 1/second --hashlimit-htable-expire 200 --hashlimit-htable-gcinterval 100 --hashlimit-name watchdog -j ACCEPT &
++    sleep 21 && iptables -I INPUT -j ACCEPT &
++    sleep 21 && iptables -I OUTPUT -j ACCEPT &
++    sleep 22 && ping -q `cat /store/config/station_ip` &
+   fi
+ fi
+```
+
+Then `echo $YOUR_IP > /store/config/station_ip`. After Beam boots up, use wireshark/tcpdump to capture ICMP packets locally and detect the IP address of Beam.
+
 ## Uninstalling
 
 ssh to Beam, and `rm /store/config/wifi_dev_mode` will disable all modifications.
