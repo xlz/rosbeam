@@ -1,5 +1,5 @@
 # rosbeam
-A ROS driver for BeamPro
+A ROS driver for BeamPro and Beam+
 
 ## NOTICE
 
