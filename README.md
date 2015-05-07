@@ -36,6 +36,15 @@ This will generate a tarball `overlay.tgz` inside the `build` directory. `sudo` 
 * Edit `/mnt/config/release/target` to add `- /store/images/overlay.tgz` as the last "layer".
 * Unmount the SD card and put it back.
 
+### BeamPlus
+
+BeamPlus has only two external USB ports with no Ethernet port or external SD card.
+
+* Connect a USB keyboard to BeamPlus
+* Plug in a USB drive with bootable image (Ubuntu LiveCD, Debian installer, etc.)
+* Power on, press F7 to enter boot menu, boot from USB
+* Mount RPD-STORE partition at `/mnt`: `mount /dev/sda2 /mnt`, and access it as above
+
 ## Running
 
 * You can connect to Beam with an Ethernet cable. The network should be configured as 192.168.68.2/255.255.255.0. Beam will be 192.168.68.1.
@@ -51,7 +60,9 @@ Controlling Beam over WIFI is not recommended but possible.
 * First find out the IP address of Beam `$BEAM_WIFI_IP` over WIFI: `ssh st@192.168.68.1 ip addr`
 * Restart the bridge: `ssh st@$BEAM_WIFI_IP 'pkill rosbeam-bridge && rosbeam-bridge.sh'`
 
-If there is no Ethernet access (BeamPlus) in the first place, apply this change to `platform.sh`
+### BeamPlus
+
+On BeamPlus there is no Ethernet access in the first place, apply this change to `platform.sh`
 ```diff
 diff --git a/build/examples/platform.sh b/build/examples/platform.sh
 index d12c972..e0a86ff 100644
