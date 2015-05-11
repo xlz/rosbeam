@@ -79,6 +79,8 @@ public:
 			stat = shm->stat;
 			pthread_mutex_unlock(&shm->stat_lock);
 
+			ros::Time time = ros::Time::now();
+
 			double lin_enc = (stat.encoder_1 - stat.encoder_2) * 0.0040578907f;
 			double ang_enc = (stat.encoder_2 + stat.encoder_1) * -0.019415744f;
 			double lin_vel = stat.actualLinearVelocity / 65536.0;
@@ -98,8 +100,6 @@ public:
 			x += cos(theta + rotation/2) * movement;
 			y += sin(theta + rotation/2) * movement;
 			theta += rotation;
-
-			ros::Time time(stat_time.tv_sec, stat_time.tv_nsec);
 
 			nav_msgs::Odometry odom;
 			odom.header.stamp = time;
